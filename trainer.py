@@ -310,9 +310,6 @@ class Trainer:
 
     def process_batch(self, inputs: Dict[Tuple | str, torch.Tensor]):
         """Pass a minibatch through the network and generate images and losses"""
-        import ipdb
-
-        ipdb.set_trace()
         for key, ipt in inputs.items():
             inputs[key] = ipt.to(self.device)
 
@@ -703,16 +700,17 @@ class Trainer:
             smooth_loss = get_smooth_loss(norm_disp, color)
 
             loss += self.opt.disparity_smoothness * smooth_loss / (2**scale)
-            query_loss = 0.0
-            for frame_id in self.opt.frame_ids[1:]:
-                query_loss += (
-                    self.config["query_loss_weight"]
-                    * self.compute_reprojection_loss(
-                        outputs[("warp_rgb_filter", frame_id)],
-                        outputs["tgt_rgb_filter"],
-                    ).mean()
-                )
-            loss += query_loss
+            if self.opt.use_inr_filter:
+                query_loss = 0.0
+                for frame_id in self.opt.frame_ids[1:]:
+                    query_loss += (
+                        self.config["query_loss_weight"]
+                        * self.compute_reprojection_loss(
+                            outputs[("warp_rgb_filter", frame_id)],
+                            outputs["tgt_rgb_filter"],
+                        ).mean()
+                    )
+                loss += query_loss
             losses["query_loss/{}".format(scale)] = query_loss
             total_loss += loss
             losses["loss/{}".format(scale)] = loss
