@@ -34,7 +34,6 @@ class PoseCNN(nn.Module):
         self.net = nn.ModuleList(list(self.convs.values()))
 
     def forward(self, out):
-
         for i in range(self.num_convs):
             out = self.convs[i](out)
             out = self.relu(out)

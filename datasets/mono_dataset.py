@@ -20,9 +20,9 @@ from torchvision import transforms
 def pil_loader(path):
     # open path as file to avoid ResourceWarning
     # (https://github.com/python-pillow/Pillow/issues/835)
-    with open(path, 'rb') as f:
+    with open(path, "rb") as f:
         with Image.open(f) as img:
-            return img.convert('RGB')
+            return img.convert("RGB")
 
 
 class MonoDataset(data.Dataset):
@@ -38,15 +38,18 @@ class MonoDataset(data.Dataset):
         is_train
         img_ext
     """
-    def __init__(self,
-                 data_path,
-                 filenames,
-                 height,
-                 width,
-                 frame_idxs,
-                 num_scales,
-                 is_train=False,
-                 img_ext='.jpg'):
+
+    def __init__(
+        self,
+        data_path,
+        filenames,
+        height,
+        width,
+        frame_idxs,
+        num_scales,
+        is_train=False,
+        img_ext=".jpg",
+    ):
         super(MonoDataset, self).__init__()
 
         self.data_path = data_path
@@ -54,7 +57,7 @@ class MonoDataset(data.Dataset):
         self.height = height
         self.width = width
         self.num_scales = num_scales
-        self.interp = Image.ANTIALIAS
+        self.interp = Image.LANCZOS
 
         self.frame_idxs = frame_idxs
 
@@ -72,7 +75,8 @@ class MonoDataset(data.Dataset):
             self.saturation = (0.8, 1.2)
             self.hue = (-0.1, 0.1)
             transforms.ColorJitter.get_params(
-                self.brightness, self.contrast, self.saturation, self.hue)
+                self.brightness, self.contrast, self.saturation, self.hue
+            )
         except TypeError:
             self.brightness = 0.2
             self.contrast = 0.2
@@ -81,9 +85,10 @@ class MonoDataset(data.Dataset):
 
         self.resize = {}
         for i in range(self.num_scales):
-            s = 2 ** i
-            self.resize[i] = transforms.Resize((self.height // s, self.width // s),
-                                               interpolation=self.interp)
+            s = 2**i
+            self.resize[i] = transforms.Resize(
+                (self.height // s, self.width // s), interpolation=self.interp
+            )
 
         self.load_depth = self.check_depth()
 
@@ -156,16 +161,20 @@ class MonoDataset(data.Dataset):
         for i in self.frame_idxs:
             if i == "s":
                 other_side = {"r": "l", "l": "r"}[side]
-                inputs[("color", i, -1)] = self.get_color(folder, frame_index, other_side, do_flip)
+                inputs[("color", i, -1)] = self.get_color(
+                    folder, frame_index, other_side, do_flip
+                )
             else:
-                inputs[("color", i, -1)] = self.get_color(folder, frame_index + i, side, do_flip)
+                inputs[("color", i, -1)] = self.get_color(
+                    folder, frame_index + i, side, do_flip
+                )
 
         # adjusting intrinsics to match each scale in the pyramid
         for scale in range(self.num_scales):
             K = self.K.copy()
 
-            K[0, :] *= self.width // (2 ** scale)
-            K[1, :] *= self.height // (2 ** scale)
+            K[0, :] *= self.width // (2**scale)
+            K[1, :] *= self.height // (2**scale)
 
             inv_K = np.linalg.pinv(K)
 
@@ -173,10 +182,11 @@ class MonoDataset(data.Dataset):
             inputs[("inv_K", scale)] = torch.from_numpy(inv_K)
 
         if do_color_aug:
-            color_aug = transforms.ColorJitter.get_params(
-                self.brightness, self.contrast, self.saturation, self.hue)
+            color_aug = transforms.ColorJitter(
+                self.brightness, self.contrast, self.saturation, self.hue
+            )
         else:
-            color_aug = (lambda x: x)
+            color_aug = lambda x: x
 
         self.preprocess(inputs, color_aug)
 

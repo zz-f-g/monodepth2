@@ -1,0 +1,82 @@
+train_dataset:
+  dataset: # 基础数据集类
+    name: image-folder # 基础数据集名称，根据名称选择基础模型类
+    args:
+      root_path: /mnt/disk/kitti # 基础数据路径
+      repeat: 1 # 所有基础数据重复的次数
+      # cache: in_memory # 基础数据读出方式：此处为直接将数据缓存在内存中读出
+      cache: bin # 基础数据读出方式：此处为将数据另存为二进制格式方便训练时直接读取而不需要图片转换
+      split_file: ./datasets/splits/eigen_zhou/train_files.txt # 数据集分割方式
+  wrapper: # 对基础数据集的包装类
+    name: sr-implicit-downsampled # 包装类名称，根据名称选择基础模型类
+    args:
+      inp_size: 48 # 作为输入的降采样的分辨率
+      # inp_size is None:
+      #   h_lr, w_lr = H / scale, W / scale
+      #   h_hr, w_hr = round(h_lr * scale), round(w_lr * scale)
+      #   训练全图
+      # inp_size is not None:
+      #   h_lr = w_lr = inp_size
+      #   h_hr, w_hr = round(h_lr * scale), round(w_lr * scale)
+      #   训练随机裁切的一部分方形图片
+      scale_max: 4 # 输入降采样率的最大值，实际降采样率是 [1-scale_max] 的均匀分布
+      augment: true # 是否作图像增广 [hflip, vflip, dflip]
+      sample_q: 2304 # 从构造的采样数据中随机选择的个数
+  batch_size: 16
+
+val_dataset:
+  dataset:
+    name: image-folder
+    args:
+      root_path: /mnt/disk/kitti
+      # first_k: 10 # 只取前 ``first_k`` 个数据集重复验证
+      # repeat: 160
+      # cache: in_memory
+      cache: bin # 基础数据读出方式：此处为将数据另存为二进制格式方便训练时直接读取而不需要图片转换
+      split_file: ./datasets/splits/eigen_zhou/val_files.txt
+  wrapper:
+    name: sr-implicit-downsampled
+    args:
+      inp_size: 48
+      scale_max: 4
+      sample_q: 2304
+  batch_size: 16
+
+data_norm:
+  inp: {sub: [0.5], div: [0.5]} # rgb 数据预处理来自上古代码
+  gt: {sub: [0.5], div: [0.5]}
+
+model:
+  name: liif
+  args:
+    encoder_spec:
+      name: edsr-baseline
+      args:
+        no_upsampling: true
+    imnet_spec:
+      name: mlp
+      args:
+        out_dim: 1
+        hidden_list: [256, 256, 256, 256]
+    cell_decode: false
+
+optimizer:
+  name: adam
+  args:
+    lr: 1.e-4
+epoch_max: 1000
+multi_step_lr:
+  milestones: [200, 400, 600, 800]
+  gamma: 0.5
+
+epoch_val: 1
+epoch_save: 100
+
+seed: 42
+query:
+  qpsize: 48
+  resmin: 0.5
+  resmax: 3.0
+query_loss_weight: 1.0
+loadckpt: true
+ckptpath: /home/gzz/workspace/models/epoch-best.pth
