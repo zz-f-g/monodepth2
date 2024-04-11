@@ -711,7 +711,7 @@ class Trainer:
                         ).mean()
                     )
                 loss += query_loss
-            losses["query_loss/{}".format(scale)] = query_loss
+                losses["query_loss/{}".format(scale)] = query_loss
             total_loss += loss
             losses["loss/{}".format(scale)] = loss
 
