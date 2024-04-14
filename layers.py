@@ -258,7 +258,7 @@ class SSIM(nn.Module):
         return torch.clamp((1 - SSIM_n / SSIM_d) / 2, 0, 1)
 
 
-def compute_depth_errors(gt, pred):
+def compute_depth_errors(gt: torch.Tensor, pred: torch.Tensor):
     """Computation of error metrics between predicted and ground truth depths"""
     thresh = torch.max((gt / pred), (pred / gt))
     a1 = (thresh < 1.25).float().mean()
