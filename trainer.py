@@ -19,6 +19,10 @@ from torch.utils.tensorboard import SummaryWriter
 # from tensorboardX import SummaryWriter
 
 import json
+import yaml
+from tqdm import tqdm
+from typing import Dict, Literal, Tuple, List
+from argparse import Namespace
 
 from utils import *
 from kitti_utils import *
@@ -33,10 +37,15 @@ import models
 import query
 from typing import Dict, Literal, Tuple
 
+Data = Dict[Tuple | str, torch.Tensor]
 
 class Trainer:
-    def __init__(self, options):
+    def __init__(self, options: Namespace):
         self.opt = options
+        with open(self.opt.config, mode="r") as f:
+            self.config = yaml.load(f, Loader=yaml.FullLoader)
+            print(f"Config loaded from {self.opt.config}")
+        torch.manual_seed(42)
         self.log_path = os.path.join(self.opt.log_dir, self.opt.model_name)
 
         with open(self.opt.config, mode="r") as f:
@@ -214,7 +223,7 @@ class Trainer:
         )
         self.val_iter = iter(self.val_loader)  # high cpu usage
 
-        self.writers: Dict[Literal["train", "val"], SummaryWriter] = {}
+        self.writers: Dict[str, SummaryWriter] = {}
         for mode in ["train", "val"]:
             self.writers[mode] = SummaryWriter(os.path.join(self.log_path, mode))
 
@@ -275,8 +284,6 @@ class Trainer:
 
     def run_epoch(self):
         """Run a single epoch of training and validation"""
-
-        # print("Training")
         self.set_train()
 
         pbar = tqdm(enumerate(self.train_loader), desc="Training", ascii=True)
@@ -308,12 +315,12 @@ class Trainer:
             self.step += 1
         self.model_lr_scheduler.step()
 
-    def process_batch(self, inputs: Dict[Tuple | str, torch.Tensor]):
+    def process_batch(self, inputs: Data):
         """Pass a minibatch through the network and generate images and losses"""
         for key, ipt in inputs.items():
             inputs[key] = ipt.to(self.device)
 
-        outputs: Dict[Tuple | str, torch.Tensor] = {}
+        outputs: Data = {}
         if self.opt.pose_model_type == "shared":
             # If we are using a shared encoder for both depth and pose (as advocated
             # in monodepthv1), then all images are fed separately through the depth encoder.
@@ -432,9 +439,9 @@ class Trainer:
 
         return outputs, losses
 
-    def predict_poses(self, inputs: Dict[Tuple | str, torch.Tensor], features):
+    def predict_poses(self, inputs: Data, features):
         """Predict poses between input frames for monocular sequences."""
-        outputs = {}
+        outputs: Data = {}
         if self.num_pose_frames == 2:
             # In this setting, we compute the pose to each source frame via a
             # separate forward pass through the pose network.
@@ -523,8 +530,8 @@ class Trainer:
 
     def generate_images_pred(
         self,
-        inputs: Dict[Tuple | str, torch.Tensor],
-        outputs: Dict[Tuple | str, torch.Tensor],
+        inputs: Data,
+        outputs: Data,
     ):
         """Generate the warped (reprojected) color images for a minibatch.
         Generated images are saved into the `outputs` dictionary.
@@ -587,7 +594,7 @@ class Trainer:
                         ("color", frame_id, source_scale)
                     ]
 
-    def compute_reprojection_loss(self, pred, target):
+    def compute_reprojection_loss(self, pred: torch.Tensor, target: torch.Tensor):
         """Computes reprojection loss between a batch of predicted and target images"""
         abs_diff = torch.abs(target - pred)
         l1_loss = abs_diff.mean(1, True)
@@ -595,22 +602,18 @@ class Trainer:
         if self.opt.no_ssim:
             reprojection_loss = l1_loss
         else:
-            ssim_loss = self.ssim(pred, target).mean(1, True)
+            ssim_loss: torch.Tensor = self.ssim(pred, target).mean(1, True)
             reprojection_loss = 0.85 * ssim_loss + 0.15 * l1_loss
 
         return reprojection_loss
 
-    def compute_losses(
-        self,
-        inputs: Dict[Tuple | str, torch.Tensor],
-        outputs: Dict[Tuple | str, torch.Tensor],
-    ):
+    def compute_losses(self, inputs: Data, outputs: Data):
         """Compute the reprojection and smoothness losses for a minibatch"""
-        losses: Dict[str, torch.Tensor] = {}
-        total_loss = 0
+        losses: Data = {}
+        total_loss = torch.tensor([0.0]).to(self.device)
 
         for scale in self.opt.scales:
-            loss = 0
+            loss = torch.tensor([0.0]).to(self.device)
             reprojection_losses = []
 
             if self.opt.v1_multiscale:
@@ -626,7 +629,7 @@ class Trainer:
                 pred = outputs[("color", frame_id, scale)]
                 reprojection_losses.append(self.compute_reprojection_loss(pred, target))
 
-            reprojection_losses = torch.cat(reprojection_losses, 1)
+            reprojection_loss = torch.cat(reprojection_losses, 1)
 
             if not self.opt.disable_automasking:
                 identity_reprojection_losses = []
@@ -636,21 +639,22 @@ class Trainer:
                         self.compute_reprojection_loss(pred, target)
                     )
 
-                identity_reprojection_losses = torch.cat(
+                identity_reprojection_loss = torch.cat(
                     identity_reprojection_losses, 1
                 )
 
                 if self.opt.avg_reprojection:
-                    identity_reprojection_loss = identity_reprojection_losses.mean(
+                    identity_reprojection_loss = identity_reprojection_loss.mean(
                         1, keepdim=True
                     )
                 else:
                     # save both images, and do min all at once below
-                    identity_reprojection_loss = identity_reprojection_losses
+                    # identity_reprojection_loss = identity_reprojection_loss
+                    pass
 
             elif self.opt.predictive_mask:
                 # use the predicted mask
-                mask = outputs["predictive_mask"]["disp", scale]
+                mask: torch.Tensor = outputs["predictive_mask"]["disp", scale]
                 if not self.opt.v1_multiscale:
                     mask = F.interpolate(
                         mask,
@@ -659,16 +663,19 @@ class Trainer:
                         align_corners=False,
                     )
 
-                reprojection_losses *= mask
+                reprojection_loss *= mask
 
                 # add a loss pushing mask to 1 (using nn.BCELoss for stability)
-                weighting_loss = 0.2 * nn.BCELoss()(mask, torch.ones(mask.shape).cuda())
+                weighting_loss: torch.Tensor = 0.2 * nn.BCELoss()(
+                    mask, torch.ones(mask.shape).cuda()
+                )
                 loss += weighting_loss.mean()
 
             if self.opt.avg_reprojection:
-                reprojection_loss = reprojection_losses.mean(1, keepdim=True)
+                reprojection_loss = reprojection_loss.mean(1, keepdim=True)
             else:
-                reprojection_loss = reprojection_losses
+                # reprojection_loss = reprojection_losses
+                pass
 
             if not self.opt.disable_automasking:
                 # add random numbers to break ties
@@ -719,7 +726,12 @@ class Trainer:
         losses["loss"] = total_loss
         return losses
 
-    def compute_depth_losses(self, inputs, outputs, losses):
+    def compute_depth_losses(
+        self,
+        inputs: Data,
+        outputs: Data,
+        losses: Data,
+    ):
         """Compute depth metrics, to allow monitoring during training
 
         This isn't particularly accurate as it averages over the entire batch,
@@ -752,9 +764,9 @@ class Trainer:
         depth_errors = compute_depth_errors(depth_gt, depth_pred)
 
         for i, metric in enumerate(self.depth_metric_names):
-            losses[metric] = np.array(depth_errors[i].cpu())
+            losses[metric] = depth_errors[i].cpu().detach()
 
-    def log_time(self, batch_idx, duration, loss):
+    def log_time(self, batch_idx: int, duration: float, loss: float):
         """Print a logging statement to the terminal"""
         samples_per_sec = self.opt.batch_size / duration
         time_sofar = time.time() - self.start_time
@@ -778,7 +790,13 @@ class Trainer:
             )
         )
 
-    def log(self, mode, inputs, outputs, losses):
+    def log(
+        self,
+        mode: Literal["train", "val"],
+        inputs: Data,
+        outputs: Data,
+        losses: Data,
+    ):
         """Write an event to the tensorboard events file"""
         writer = self.writers[mode]
         for l, v in losses.items():
