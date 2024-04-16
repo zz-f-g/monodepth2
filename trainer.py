@@ -46,12 +46,8 @@ class Trainer:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
             print(f"Config loaded from {self.opt.config}")
         torch.manual_seed(42)
-        self.log_path = os.path.join(self.opt.log_dir, self.opt.model_name)
 
-        with open(self.opt.config, mode="r") as f:
-            self.config = yaml.load(f, Loader=yaml.FullLoader)
-            print("Config loaded.")
-        torch.manual_seed(self.config["seed"])
+        self.log_path = os.path.join(self.opt.log_dir, self.opt.model_name)
         # checking height and width are multiples of 32
         assert self.opt.height % 32 == 0, "'height' must be a multiple of 32"
         assert self.opt.width % 32 == 0, "'width' must be a multiple of 32"
@@ -119,9 +115,10 @@ class Trainer:
             self.parameters_to_train += list(self.models["pose"].parameters())
 
         if self.opt.use_inr_filter:
-            self.models.update(
-                {"filter": models.liif.LIIF(**(self.config["model"]["args"]))}
-            )
+            self.filter = models.liif.LIIF(**(self.config["model"]["args"]))
+            # self.models.update(
+            #     {"filter": models.liif.LIIF(**(self.config["model"]["args"]))}
+            # )
             if self.config["loadckpt"]:
                 model_spec: Dict = torch.load(self.config["ckptpath"])["model"]
                 assert (
@@ -130,9 +127,10 @@ class Trainer:
                 assert (
                     model_spec["args"] == self.config["model"]["args"]
                 ), "model args dismatch with ckpt"
-                self.models["filter"].load_state_dict(model_spec["sd"])
-            self.models["filter"].to(self.device)
-            self.parameters_to_train += list(self.models["filter"].parameters())
+                self.filter.load_state_dict(model_spec["sd"])
+            self.filter.to(self.device)
+            self.filter.eval()
+            # self.parameters_to_train += list(self.models["filter"].parameters())
 
         if self.opt.predictive_mask:
             assert (
@@ -403,7 +401,7 @@ class Trainer:
             )
             outputs.update(
                 {
-                    "disp_filter": self.models["filter"](
+                    "disp_filter": self.filter(
                         outputs[("disp", 0)], query_grids.flip(-1)
                     ).view(
                         self.opt.batch_size,

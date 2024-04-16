@@ -16,16 +16,12 @@ class MonodepthOptions:
     def __init__(self):
         self.parser = argparse.ArgumentParser(description="Monodepthv2 options")
 
+        # PATHS
         self.parser.add_argument(
             "--config",
             type=str,
             help="path to the config yaml",
-            default="config/mdp.yaml",
-        )
-
-        # PATHS
-        self.parser.add_argument(
-            "--config", type=str, help="config file path", default="config/train.yaml"
+            default="config/train.yaml",
         )
         self.parser.add_argument(
             "--data_path",
