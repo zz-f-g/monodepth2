@@ -17,6 +17,12 @@ class MonodepthOptions:
         self.parser = argparse.ArgumentParser(description="Monodepthv2 options")
 
         self.parser.add_argument(
+            "--depth_bwd",
+            help="if set, change backward for depth",
+            action="store_true",
+        )
+
+        self.parser.add_argument(
             "--config",
             type=str,
             help="path to the config yaml",
@@ -34,7 +40,7 @@ class MonodepthOptions:
             "--log_dir",
             type=str,
             help="log directory",
-            default="logs",
+            default="ckpts",
         )
 
         # TRAINING options
