@@ -82,7 +82,7 @@ def evaluate(opt):
 
         dataset = datasets.KITTIRAWDataset(opt.data_path, filenames,
                                            encoder_dict['height'], encoder_dict['width'],
-                                           [0], 4, is_train=False)
+                                           [0], 4, is_train=False, img_ext=".png")
         dataloader = DataLoader(dataset, 16, shuffle=False, num_workers=opt.num_workers,
                                 pin_memory=True, drop_last=False)
 
@@ -97,6 +97,16 @@ def evaluate(opt):
         encoder.eval()
         depth_decoder.cuda()
         depth_decoder.eval()
+
+        # if opt.use_inr_filter:
+        #     filter_path = os.path.join(opt.load_weights_folder, "filter.pth")
+        #     with open(opt.config, mode="r") as f:
+        #         config = yaml.load(f, Loader=yaml.FullLoader)
+        #         print("Config loaded.")
+        #     filter_model = models.liif.LIIF(**config["model"]["args"])
+        #     filter_model.load_state_dict(torch.load(filter_path))
+        #     filter_model.cuda()
+        #     filter_model.eval()
 
         pred_disps = []
 
@@ -163,7 +173,7 @@ def evaluate(opt):
         quit()
 
     gt_path = os.path.join(splits_dir, opt.eval_split, "gt_depths.npz")
-    gt_depths = np.load(gt_path, fix_imports=True, encoding='latin1')["data"]
+    gt_depths = np.load(gt_path) #, fix_imports=True, encoding='latin1')["data"]
 
     print("-> Evaluating")
 
@@ -180,7 +190,7 @@ def evaluate(opt):
 
     for i in range(pred_disps.shape[0]):
 
-        gt_depth = gt_depths[i]
+        gt_depth = gt_depths[f"arr_{i}"]
         gt_height, gt_width = gt_depth.shape[:2]
 
         pred_disp = pred_disps[i]

@@ -469,7 +469,10 @@ class Trainer:
                 )
                 if self.opt.depth_bwd:
                     depth_max = depth.max()
-                    depth_bwd = torch.clamp(depth * depth / (pix_coords.detach().norm(dim=-1).unsqueeze(1)), max=self.opt.max_depth)
+                    depth_bwd = torch.clamp(
+                        depth / ((pix_coords.norm(dim=-1).unsqueeze(1))).detach(),
+                        max=self.opt.max_depth,
+                    )
                     depth_converted = depth_bwd + (depth - depth_bwd).detach()
                     cam_points = self.backproject_depth[source_scale](
                         depth_converted, inputs[("inv_K", source_scale)]
